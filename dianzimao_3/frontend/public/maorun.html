@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meow Runner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f8ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 300px;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            background-color: #e6f7ff;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+        }
+        .game-over h2 {
+            margin: 0 0 10px 0;
+        }
+        .game-over p {
+            margin: 5px 0;
+        }
+        .game-over button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .game-over button:hover {
+            background-color: #45a049;
+        }
+        .start-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 24px;
+            color: #333;
+            z-index: 10;
+        }
+        .score {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 5;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        .instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 12px;
+            color: #666;
+            z-index: 5;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        @media (max-width: 768px) {
+            #gameContainer {
+                height: 60vh;
+            }
+            .start-screen {
+                font-size: 20px;
+            }
+            .score {
+                font-size: 16px;
+            }
+            .instructions {
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div class="score" id="score">Score: 0</div>
+        <div class="instructions">Space/Up: Jump | Tap: Jump</div>
+        <canvas id="gameCanvas" width="800" height="300"></canvas>
+        <div class="start-screen" id="startScreen">Press Space to Meow</div>
+        <div class="game-over" id="gameOver" style="display: none;">
+            <h2>Game Over</h2>
+            <p>Score: <span id="finalScore">0</span></p>
+            <p>High Score: <span id="highScore">0</span></p>
+            <button onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const GameState = {
+            READY: 'ready',
+            PLAYING: 'playing',
+            GAME_OVER: 'gameOver'
+        };
+
+        class GameObject {
+            constructor(x, y, width, height) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+            }
+
+            draw(ctx) {
+            }
+
+            update() {
+            }
+
+            collisionWith(other) {
+                return this.x < other.x + other.width &&
+                       this.x + this.width > other.x &&
+                       this.y < other.y + other.height &&
+                       this.y + this.height > other.y;
+            }
+        }
+
+        class Cat extends GameObject {
+            constructor(x, y) {
+                super(x, y, 40, 40);
+                this.velocityY = 0;
+                this.gravity = 0.5;
+                this.jumpPower = -10;
+                this.onGround = true;
+                this.catEmojis = ['\uD83D\uDC31', '\uD83D\uDE3A', '\uD83D\uDE38', '\uD83D\uDE3B', '\uD83D\uDC08', '\uD83D\uDE3D', '\uD83D\uDE40', '\uD83D\uDE3F', '\uD83D\uDE39', '\uD83D\uDC31'];
+                this.currentEmojiIndex = 0;
+            }
+
+            draw(ctx) {
+                ctx.font = '40px sans-serif';
+                ctx.fillText(this.catEmojis[this.currentEmojiIndex], this.x, this.y + 35);
+            }
+
+            switchEmoji() {
+                this.currentEmojiIndex = (this.currentEmojiIndex + 1) % this.catEmojis.length;
+            }
+
+            update(groundY) {
+                this.velocityY += this.gravity;
+                this.y += this.velocityY;
+
+                if (this.y + this.height >= groundY) {
+                    this.y = groundY - this.height;
+                    this.velocityY = 0;
+                    this.onGround = true;
+                } else {
+                    this.onGround = false;
+                }
+            }
+
+            jump() {
+                if (this.onGround) {
+                    this.velocityY = this.jumpPower;
+                    this.onGround = false;
+                }
+            }
+
+            getHitbox() {
+                return {
+                    x: this.x + 5,
+                    y: this.y + 5,
+                    width: this.width - 10,
+                    height: this.height - 10
+                };
+            }
+        }
+
+        class Obstacle extends GameObject {
+            constructor(x, y, width, height) {
+                super(x, y, width, height);
+                this.speed = 5;
+                this.passed = false;
+            }
+
+            update() {
+                this.x -= this.speed;
+            }
+
+            isOffScreen() {
+                return this.x + this.width < 0;
+            }
+        }
+
+        class PaperTissue extends Obstacle {
+            constructor(x, y) {
+                super(x, y, 45, 40);
+            }
+
+            draw(ctx) {
+                ctx.font = '40px sans-serif';
+                ctx.fillText('\uD83E\uDDFB', this.x, this.y + 35);
+            }
+        }
+
+        class Carrot extends Obstacle {
+            constructor(x, y) {
+                super(x, y, 40, 45);
+            }
+
+            draw(ctx) {
+                ctx.font = '45px sans-serif';
+                ctx.fillText('\uD83E\uDD55', this.x, this.y + 40);
+            }
+        }
+
+        class Game {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.width = this.canvas.width;
+                this.height = this.canvas.height;
+                this.groundY = this.height - 50;
+                this.state = GameState.READY;
+                this.score = 0;
+                this.highScore = parseInt(localStorage.getItem('meowRunnerHighScore')) || 0;
+                this.obstacles = [];
+                this.obstacleSpawnTimer = 0;
+                this.obstacleSpawnInterval = 1500;
+                this.lastTime = 0;
+                this.dodgeCount = 0;
+                this.gameStartTime = 0;
+
+                this.cat = new Cat(50, this.groundY - 40);
+
+                this.backgroundX = 0;
+                this.backgroundSpeed = 2;
+
+                document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+                document.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.handleTouch();
+                });
+
+                requestAnimationFrame((timestamp) => this.gameLoop(timestamp));
+            }
+
+            handleKeyDown(e) {
+                if (e.code === 'Space' || e.code === 'ArrowUp') {
+                    e.preventDefault();
+                    if (this.state === GameState.READY) {
+                        this.startGame();
+                    } else if (this.state === GameState.PLAYING) {
+                        this.cat.jump();
+                    }
+                }
+            }
+
+            handleTouch() {
+                if (this.state === GameState.READY) {
+                    this.startGame();
+                } else if (this.state === GameState.PLAYING) {
+                    this.cat.jump();
+                }
+            }
+
+            startGame() {
+                this.state = GameState.PLAYING;
+                this.score = 0;
+                this.obstacles = [];
+                this.dodgeCount = 0;
+                this.gameStartTime = Date.now();
+                this.cat = new Cat(50, this.groundY - 40);
+                document.getElementById('startScreen').style.display = 'none';
+                document.getElementById('gameOver').style.display = 'none';
+            }
+
+            gameOver() {
+                this.state = GameState.GAME_OVER;
+                if (this.score > this.highScore) {
+                    this.highScore = this.score;
+                    localStorage.setItem('meowRunnerHighScore', this.highScore);
+                }
+                document.getElementById('finalScore').textContent = this.score;
+                document.getElementById('highScore').textContent = this.highScore;
+                document.getElementById('gameOver').style.display = 'block';
+            }
+
+            spawnObstacle() {
+                const obstacleType = Math.random() > 0.5 ? 'paperTissue' : 'carrot';
+                let obstacle;
+                if (obstacleType === 'paperTissue') {
+                    obstacle = new PaperTissue(this.width, this.groundY - 120);
+                } else {
+                    obstacle = new Carrot(this.width, this.groundY - 45);
+                }
+                this.obstacles.push(obstacle);
+            }
+
+            update(deltaTime) {
+                if (this.state !== GameState.PLAYING) return;
+
+                this.cat.update(this.groundY);
+
+                this.backgroundX -= this.backgroundSpeed;
+                if (this.backgroundX <= -this.width) {
+                    this.backgroundX = 0;
+                }
+
+                this.obstacles.forEach(obstacle => {
+                    obstacle.update();
+
+                    if (!obstacle.passed && obstacle.x + obstacle.width < this.cat.x) {
+                        obstacle.passed = true;
+                        this.dodgeCount++;
+                        this.cat.switchEmoji();
+                    }
+                });
+
+                this.obstacles = this.obstacles.filter(obstacle => !obstacle.isOffScreen());
+
+                this.obstacleSpawnTimer += deltaTime;
+                if (this.obstacleSpawnTimer >= this.obstacleSpawnInterval) {
+                    this.spawnObstacle();
+                    this.obstacleSpawnTimer = 0;
+                    if (this.obstacleSpawnInterval > 800) {
+                        this.obstacleSpawnInterval -= 30;
+                    }
+                }
+
+                const catHitbox = this.cat.getHitbox();
+                for (const obstacle of this.obstacles) {
+                    const obstacleHitbox = {
+                        x: obstacle.x + 5,
+                        y: obstacle.y + 5,
+                        width: obstacle.width - 10,
+                        height: obstacle.height - 10
+                    };
+
+                    if (catHitbox.x < obstacleHitbox.x + obstacleHitbox.width &&
+                        catHitbox.x + catHitbox.width > obstacleHitbox.x &&
+                        catHitbox.y < obstacleHitbox.y + obstacleHitbox.height &&
+                        catHitbox.y + catHitbox.height > obstacleHitbox.y) {
+                        this.gameOver();
+                        break;
+                    }
+                }
+
+                const survivalTime = (Date.now() - this.gameStartTime) / 1000;
+                this.score = Math.floor(survivalTime * 10);
+                document.getElementById('score').textContent = `Score: ${this.score}`;
+            }
+
+            draw() {
+                this.ctx.clearRect(0, 0, this.width, this.height);
+
+                this.ctx.fillStyle = '#e6f7ff';
+                this.ctx.fillRect(0, 0, this.width, this.height);
+
+                this.ctx.fillStyle = 'white';
+                for (let i = 0; i < 5; i++) {
+                    const x = (i * 200 + this.backgroundX * 0.5) % this.width;
+                    this.ctx.beginPath();
+                    this.ctx.arc(x + 50, 50, 20, 0, Math.PI * 2);
+                    this.ctx.arc(x + 70, 50, 25, 0, Math.PI * 2);
+                    this.ctx.arc(x + 90, 50, 20, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+
+                this.ctx.fillStyle = '#90ee90';
+                this.ctx.fillRect(0, this.groundY, this.width, this.height - this.groundY);
+
+                this.ctx.fillStyle = '#8B4513';
+                this.ctx.fillRect(0, this.groundY, this.width, 3);
+
+                this.cat.draw(this.ctx);
+
+                this.obstacles.forEach(obstacle => {
+                    obstacle.draw(this.ctx);
+                });
+            }
+
+            gameLoop(timestamp) {
+                const deltaTime = timestamp - this.lastTime;
+                this.lastTime = timestamp;
+
+                this.update(deltaTime);
+                this.draw();
+
+                requestAnimationFrame((timestamp) => this.gameLoop(timestamp));
+            }
+        }
+
+        let game;
+        window.onload = function() {
+            game = new Game('gameCanvas');
+        };
+
+        function restartGame() {
+            game.startGame();
+        }
+    </script>
+</body>
+</html>
